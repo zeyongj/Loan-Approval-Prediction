@@ -8,8 +8,9 @@ Upon submission to Kaggle, the model achieved a final ROC-AUC score of **0.96025
 
 ## Files Included
 
-- **`loan_approval_prediction.ipynb`**: The complete Python script used for data preprocessing, model training, and generating predictions for submission.
+- **`loan_approval_prediction.ipynb`**: The complete Python script used for data preprocessing, model training, and generating predictions for submission, running on Google Colab.
 - **`loan_approval_submission_optimized.csv`**: The submission file containing loan approval probabilities for each applicant in the test set.
+- **`loan_approval.py`**: The complete Python script used for data preprocessing, model training, and generating predictions for submission, running locally.
 - **`README.md`**: This documentation file.
 
 ## Installation
