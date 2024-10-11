@@ -2,6 +2,7 @@
 !pip install category_encoders
 !pip install optuna
 !pip install imbalanced-learn
+!pip install lightgbm --upgrade
 
 # Import necessary libraries
 import os
@@ -35,7 +36,7 @@ test_df.set_index('id', inplace=True)
 
 # Identify categorical and numerical features
 categorical_features = ['person_home_ownership', 'loan_intent', 'loan_grade', 'cb_person_default_on_file']
-numerical_features = ['person_age', 'person_income', 'person_emp_length', 'loan_amnt', 
+numerical_features = ['person_age', 'person_income', 'person_emp_length', 'loan_amnt',
                       'loan_int_rate', 'loan_percent_income', 'cb_person_cred_hist_length']
 
 # Feature Engineering: Create new features
@@ -76,55 +77,59 @@ def objective(trial):
     for train_index, valid_index in skf.split(X, y):
         X_train_fold, X_valid_fold = X.iloc[train_index], X.iloc[valid_index]
         y_train_fold, y_valid_fold = y.iloc[train_index], y.iloc[valid_index]
-        
+
         # Target Encoding
         X_train_fold = target_enc.fit_transform(X_train_fold, y_train_fold)
         X_valid_fold = target_enc.transform(X_valid_fold)
         X_test_enc = target_enc.transform(test_df)
-        
+
         # Handle class imbalance with SMOTE
         sm = SMOTE(random_state=42)
         X_resampled, y_resampled = sm.fit_resample(X_train_fold, y_train_fold)
-        
+
         # Scale numerical features
         scaler = StandardScaler()
         X_resampled[numerical_features] = scaler.fit_transform(X_resampled[numerical_features])
         X_valid_fold[numerical_features] = scaler.transform(X_valid_fold[numerical_features])
         X_test_enc[numerical_features] = scaler.transform(X_test_enc[numerical_features])
-        
-        # Define LightGBM parameters
+
+        # Define LightGBM parameters using new suggest methods
         param = {
             'objective': 'binary',
             'metric': 'auc',
             'boosting_type': 'gbdt',
-            'learning_rate': trial.suggest_loguniform('learning_rate', 0.005, 0.1),
+            'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.1, log=True),
             'num_leaves': trial.suggest_int('num_leaves', 20, 300),
             'max_depth': trial.suggest_int('max_depth', 3, 20),
             'min_child_samples': trial.suggest_int('min_child_samples', 5, 100),
-            'subsample': trial.suggest_uniform('subsample', 0.4, 1.0),
-            'colsample_bytree': trial.suggest_uniform('colsample_bytree', 0.4, 1.0),
-            'reg_alpha': trial.suggest_loguniform('reg_alpha', 1e-4, 10.0),
-            'reg_lambda': trial.suggest_loguniform('reg_lambda', 1e-4, 10.0),
+            'subsample': trial.suggest_float('subsample', 0.4, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.4, 1.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 1e-4, 10.0, log=True),
+            'reg_lambda': trial.suggest_float('reg_lambda', 1e-4, 10.0, log=True),
             'random_state': 42,
             'verbosity': -1,
             'n_jobs': -1
         }
-        
+
         lgb_train = lgb.Dataset(X_resampled, y_resampled)
         lgb_valid = lgb.Dataset(X_valid_fold, y_valid_fold, reference=lgb_train)
-        
+
+        # Use early_stopping as a callback
+        pruning_callback = LightGBMPruningCallback(trial, 'auc')
+        early_stopping_callback = lgb.early_stopping(stopping_rounds=100, verbose=False)
+        callbacks = [pruning_callback, early_stopping_callback]
+
         gbm = lgb.train(param,
                         lgb_train,
-                        num_boost_round=1000,
+                        num_boost_round=10000,
                         valid_sets=[lgb_train, lgb_valid],
-                        early_stopping_rounds=100,
                         verbose_eval=False,
-                        callbacks=[LightGBMPruningCallback(trial, 'auc')])
-        
+                        callbacks=callbacks)
+
         y_valid_pred = gbm.predict(X_valid_fold, num_iteration=gbm.best_iteration)
         auc = roc_auc_score(y_valid_fold, y_valid_pred)
         aucs.append(auc)
-    
+
     return np.mean(aucs)
 
 # Optimize hyperparameters using Optuna
@@ -148,36 +153,40 @@ for fold, (train_index, valid_index) in enumerate(skf.split(X, y)):
     print(f'Fold {fold + 1}')
     X_train_fold, X_valid_fold = X.iloc[train_index], X.iloc[valid_index]
     y_train_fold, y_valid_fold = y.iloc[train_index], y.iloc[valid_index]
-    
+
     # Target Encoding
     X_train_fold = target_enc.fit_transform(X_train_fold, y_train_fold)
     X_valid_fold = target_enc.transform(X_valid_fold)
     X_test_enc = target_enc.transform(test_df)
-    
+
     # Handle class imbalance with SMOTE
     sm = SMOTE(random_state=42)
     X_resampled, y_resampled = sm.fit_resample(X_train_fold, y_train_fold)
-    
+
     # Scale numerical features
     scaler = StandardScaler()
     X_resampled[numerical_features] = scaler.fit_transform(X_resampled[numerical_features])
     X_valid_fold[numerical_features] = scaler.transform(X_valid_fold[numerical_features])
     X_test_enc[numerical_features] = scaler.transform(X_test_enc[numerical_features])
-    
+
     lgb_train = lgb.Dataset(X_resampled, y_resampled)
     lgb_valid = lgb.Dataset(X_valid_fold, y_valid_fold, reference=lgb_train)
-    
+
+    # Use early_stopping as a callback
+    early_stopping_callback = lgb.early_stopping(stopping_rounds=100, verbose=False)
+    callbacks = [early_stopping_callback]
+
     gbm = lgb.train(best_params,
                     lgb_train,
                     num_boost_round=10000,
                     valid_sets=[lgb_train, lgb_valid],
-                    early_stopping_rounds=100,
-                    verbose_eval=100)
-    
+                    verbose_eval=100,
+                    callbacks=callbacks)
+
     # Predict on validation set
     y_valid_pred = gbm.predict(X_valid_fold, num_iteration=gbm.best_iteration)
     oof_preds[valid_index] = y_valid_pred
-    
+
     # Predict on test set
     test_fold_pred = gbm.predict(X_test_enc, num_iteration=gbm.best_iteration)
     test_preds += test_fold_pred / skf.n_splits
