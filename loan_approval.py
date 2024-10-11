@@ -117,15 +117,19 @@ def objective(trial):
         # Use early_stopping and log_evaluation as callbacks
         pruning_callback = LightGBMPruningCallback(trial, 'auc')
         early_stopping_callback = lgb.early_stopping(stopping_rounds=100, verbose=False)
-        log_eval_callback = lgb.log_evaluation(period=0)  # Set period=0 to disable logging
+        log_eval_callback = lgb.log_evaluation(period=0)  # Suppress logging during optimization
 
         callbacks = [pruning_callback, early_stopping_callback, log_eval_callback]
 
-        gbm = lgb.train(param,
-                        lgb_train,
-                        num_boost_round=10000,
-                        valid_sets=[lgb_train, lgb_valid],
-                        callbacks=callbacks)
+        # Include valid_names to ensure the validation dataset is named 'valid_0'
+        gbm = lgb.train(
+            param,
+            lgb_train,
+            num_boost_round=10000,
+            valid_sets=[lgb_train, lgb_valid],
+            valid_names=['training', 'valid_0'],  # Specify names here
+            callbacks=callbacks
+        )
 
         y_valid_pred = gbm.predict(X_valid_fold, num_iteration=gbm.best_iteration)
         auc = roc_auc_score(y_valid_fold, y_valid_pred)
@@ -179,11 +183,15 @@ for fold, (train_index, valid_index) in enumerate(skf.split(X, y)):
 
     callbacks = [early_stopping_callback, log_eval_callback]
 
-    gbm = lgb.train(best_params,
-                    lgb_train,
-                    num_boost_round=10000,
-                    valid_sets=[lgb_train, lgb_valid],
-                    callbacks=callbacks)
+    # Include valid_names here as well
+    gbm = lgb.train(
+        best_params,
+        lgb_train,
+        num_boost_round=10000,
+        valid_sets=[lgb_train, lgb_valid],
+        valid_names=['training', 'valid_0'],
+        callbacks=callbacks
+    )
 
     # Predict on validation set
     y_valid_pred = gbm.predict(X_valid_fold, num_iteration=gbm.best_iteration)
