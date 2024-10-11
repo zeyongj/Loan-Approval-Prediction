@@ -114,16 +114,17 @@ def objective(trial):
         lgb_train = lgb.Dataset(X_resampled, y_resampled)
         lgb_valid = lgb.Dataset(X_valid_fold, y_valid_fold, reference=lgb_train)
 
-        # Use early_stopping as a callback
+        # Use early_stopping and log_evaluation as callbacks
         pruning_callback = LightGBMPruningCallback(trial, 'auc')
         early_stopping_callback = lgb.early_stopping(stopping_rounds=100, verbose=False)
-        callbacks = [pruning_callback, early_stopping_callback]
+        log_eval_callback = lgb.log_evaluation(period=0)  # Set period=0 to disable logging
+
+        callbacks = [pruning_callback, early_stopping_callback, log_eval_callback]
 
         gbm = lgb.train(param,
                         lgb_train,
                         num_boost_round=10000,
                         valid_sets=[lgb_train, lgb_valid],
-                        verbose_eval=False,
                         callbacks=callbacks)
 
         y_valid_pred = gbm.predict(X_valid_fold, num_iteration=gbm.best_iteration)
@@ -172,15 +173,16 @@ for fold, (train_index, valid_index) in enumerate(skf.split(X, y)):
     lgb_train = lgb.Dataset(X_resampled, y_resampled)
     lgb_valid = lgb.Dataset(X_valid_fold, y_valid_fold, reference=lgb_train)
 
-    # Use early_stopping as a callback
+    # Use early_stopping and log_evaluation as callbacks
     early_stopping_callback = lgb.early_stopping(stopping_rounds=100, verbose=False)
-    callbacks = [early_stopping_callback]
+    log_eval_callback = lgb.log_evaluation(period=100)
+
+    callbacks = [early_stopping_callback, log_eval_callback]
 
     gbm = lgb.train(best_params,
                     lgb_train,
                     num_boost_round=10000,
                     valid_sets=[lgb_train, lgb_valid],
-                    verbose_eval=100,
                     callbacks=callbacks)
 
     # Predict on validation set
