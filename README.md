@@ -71,7 +71,7 @@ The solution proceeds through the following steps:
 
 - **Callbacks**: LightGBM training employed callbacks for early stopping and log evaluation to ensure efficient convergence and model monitoring.
 
-## Key Techniques for Success
+## Key Techniques
 
 1. **Feature Engineering**: Generating new features significantly enhanced the model's ability to distinguish between approved and non-approved loans.
 2. **Hyperparameter Optimization with Optuna**: Rigorous hyperparameter optimization allowed the model to reach its maximum potential by identifying the optimal parameter set.
