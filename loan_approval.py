@@ -1,12 +1,16 @@
+# Install necessary packages
+!pip install category_encoders
+!pip install optuna
+!pip install imbalanced-learn
+
 # Import necessary libraries
 import os
 import pandas as pd
 import numpy as np
 import zipfile
-from sklearn.model_selection import StratifiedKFold, train_test_split
+from sklearn.model_selection import StratifiedKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import roc_auc_score
-from sklearn.impute import SimpleImputer
 import lightgbm as lgb
 import optuna
 from optuna.integration import LightGBMPruningCallback
@@ -28,12 +32,6 @@ sample_submission_df = pd.read_csv(os.path.join(extract_dir, 'sample_submission.
 # Reset index to 'id' for both datasets
 train_df.set_index('id', inplace=True)
 test_df.set_index('id', inplace=True)
-
-# Handle missing values (if any)
-# Assuming there are no missing values, but if there are:
-# imputer = SimpleImputer(strategy='median')
-# train_df = pd.DataFrame(imputer.fit_transform(train_df), columns=train_df.columns)
-# test_df = pd.DataFrame(imputer.transform(test_df), columns=test_df.columns)
 
 # Identify categorical and numerical features
 categorical_features = ['person_home_ownership', 'loan_intent', 'loan_grade', 'cb_person_default_on_file']
@@ -171,7 +169,7 @@ for fold, (train_index, valid_index) in enumerate(skf.split(X, y)):
     
     gbm = lgb.train(best_params,
                     lgb_train,
-                    num_boost_round=1000,
+                    num_boost_round=10000,
                     valid_sets=[lgb_train, lgb_valid],
                     early_stopping_rounds=100,
                     verbose_eval=100)
